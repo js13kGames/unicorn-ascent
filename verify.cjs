@@ -2,7 +2,8 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const html=fs.readFileSync(process.argv[2]||'index.html','utf8'),script=html.split('<script>')[1].split('</script>')[0];
 const noop=()=>{},gradient={addColorStop:noop},ctx=new Proxy({createLinearGradient:()=>gradient},{get:(o,k)=>o[k]??noop}),canvas={width:960,height:540,getContext:()=>ctx,getBoundingClientRect:()=>({width:960,height:540})};
 const env={document:{querySelector:()=>canvas},devicePixelRatio:1,requestAnimationFrame:noop};vm.createContext(env);vm.runInContext(script,env);
-vm.runInContext(`
+function runInGame(code, context) { return vm.runInContext(script.includes('VIEW_WIDTH') ? require('./rename.cjs')(code, require('./source-names.json')) : code, context); }
+runInGame(`
 muted=1;reset();
 scene='win';c.onclick();if(scene!=='win')throw Error('Victory click exits');onkeydown({key:' ',repeat:false,preventDefault(){}});if(scene!=='win')throw Error('Victory jump exits');onkeyup({key:' '});onkeydown({key:'Enter',repeat:true,preventDefault(){}});if(scene!=='win')throw Error('Held Enter exits');onkeydown({key:'Enter',repeat:false,preventDefault(){}});if(scene!=='title')throw Error('Victory Enter fails');onkeyup({key:'Enter'});reset();
 for(let run=0;run<20;run++){reset(1);if(hazards.some(h=>h.type==='gear'))throw Error('Gear still generated');if(hazards.some(h=>h.type==='spike'&&h.phase>72))throw Error('Gear replaced with spike')}reset();
@@ -93,7 +94,7 @@ let count=plat.length;endless();if(plat.length!==count)throw Error('Lava must be
 reset();p.y=-1000;cam=p.y-270;endless();if(Math.min(...plat.map(a=>a.y))>p.y-800)throw Error('Endless generation');update(.016);if(scene==='win'||zone!==0)throw Error('Upward route must not win');if(!warned)throw Error('Warning missing');draw();
 p.charge=9.99;update(.02);if(p.charge!==10)throw Error('Ten second charge');bubblePower();if(p.charge!==0||p.shield!==6)throw Error('Charged special');
 `,env);
-vm.runInContext(`
+runInGame(`
 let notes=0,volume=-1;
 ac={state:'running',currentTime:0,destination:{},createGain:()=>({gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){},setTargetAtTime(v){volume=v}},connect(node){return node},disconnect(){}}),createOscillator:()=>({frequency:{},connect(node){return node},start(){notes++},stop(){},disconnect(){}})};
 musicBus=null;musicAt=0;muted=0;scene='play';soundtrack();if(!notes||volume<=0)throw Error('Music scheduling');
