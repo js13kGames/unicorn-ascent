@@ -1,0 +1,8 @@
+{
+  "c": "canvas", "g": "context", "W": "VIEW_WIDTH", "H": "VIEW_HEIGHT",
+  "U": "WORLD_HEIGHT", "K": "heldKeys", "J": "pressedKeys", "P": "particles",
+  "E": "enemies", "N": "MAIN_PLATFORM_COUNT", "plat": "platforms",
+  "p": "player", "cam": "cameraY", "camX": "cameraX", "t": "elapsedTime",
+  "cp": "checkpointIndex", "msg": "announcement", "mt": "announcementTime",
+  "ZN": "REGION_NAMES", "R": "randomBetween"
+}
