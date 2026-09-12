@@ -225,10 +225,12 @@ canvas.onpointerdown = e => {
             mouse.down = 0;
         } else {
             mouse.down = 1;
-            if (document.pointerLockElement !== canvas && canvas.requestPointerLock) {
+            if (typeof location !== "undefined" && location.protocol !== "file:" && document.pointerLockElement !== canvas && canvas.requestPointerLock) {
                 [mouse.ax, mouse.ay] = aimVector();
-                let lock = canvas.requestPointerLock();
-                if (lock && lock.catch) lock.catch(() => {});
+                try {
+                    let lock = canvas.requestPointerLock();
+                    if (lock && lock.catch) lock.catch(() => {});
+                } catch (e) {}
             }
         }
     }
@@ -245,6 +247,7 @@ onblur = () => {
 document.onpointerlockchange = () => {
     if (document.pointerLockElement !== canvas) mouse.down = 0;
 };
+document.onpointerlockerror = () => mouse.down = 0;
 
 function aimVector() {
     if (document.pointerLockElement === canvas) return [ mouse.ax, mouse.ay ];
@@ -282,6 +285,7 @@ function crosshair() {
 let musicBus, musicAt = 0, musicStep = 0;
 
 function unlockAudio() {
+    if (typeof navigator !== "undefined" && navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
     try {
         ac ||= new AudioContext;
         if (ac.state === "suspended") ac.resume().catch(() => {});
@@ -331,9 +335,8 @@ function soundtrack() {
 }
 
 function sound(f, d = .07, type = "square") {
-    if (muted) return;
+    if (muted || !ac) return;
     try {
-        ac ||= new AudioContext;
         let o = ac.createOscillator(), a = ac.createGain();
         o.type = type;
         o.frequency.value = f;
@@ -581,13 +584,6 @@ function update(dt) {
         return;
     }
     if (scene !== "play") return;
-    if (pressedKeys.t) {
-        reset(1);
-        checkpointIndex = platforms.length - 1;
-        respawn();
-        player.charge = 10;
-        for (let k in pressedKeys) pressedKeys[k] = 0;
-    }
     elapsedTime += dt;
     layerTime = Math.max(0, layerTime - dt);
     player.freeze = Math.max(0, player.freeze - dt);
@@ -735,7 +731,6 @@ function update(dt) {
     cameraY += (aim - cameraY) * Math.min(1, dt * 5);
     if (flipped && player.y < 300 && !enemies.some(e => e.boss)) {
         enemies.length = orbs.length = hail.length = 0;
-        checkpointIndex = platforms.length - 1;
         player.hp = 8;
         player.freeze = player.push = 0;
         player.inv = 2;
@@ -993,11 +988,16 @@ function unicorn(a = player, s = 1) {
     }
     context.globalAlpha = a.inv > 0 && elapsedTime * 12 % 2 > 1 ? .4 : 1;
     let points = tail(a);
+    for (let j = 0; j < 13; j++) {
+        let b = points[Math.max(0, j - 1)], n = points[Math.min(12, j + 1)], dx = n[0] - b[0], dy = n[1] - b[1], d = Math.hypot(dx, dy) || 1;
+        points[j][2] = dy / d;
+        points[j][3] = dx / d;
+    }
     for (let i = 6; i >= 0; i--) {
         context.strokeStyle = cs[i];
         let px, py;
-        for (let j = 0; j < points.length; j++) {
-            let v = points[j], b = points[Math.max(0, j - 1)], n = points[Math.min(12, j + 1)], dx = n[0] - b[0], dy = n[1] - b[1], d = Math.hypot(dx, dy) || 1, u = j / 12, o = (i - 3) * 1.12 * (1 - .7 * u) + Math.sin(elapsedTime * 7 + u * 5 + i) * u * u * .65, x = v[0] - dy / d * o, y = v[1] + dx / d * o;
+        for (let j = 0; j < 13; j++) {
+            let v = points[j], u = j / 12, o = (i - 3) * 1.12 * (1 - .7 * u) + Math.sin(elapsedTime * 7 + u * 5 + i) * u * u * .65, x = v[0] - v[2] * o, y = v[1] + v[3] * o;
             if (j) {
                 context.lineWidth = 1.26 * (1 - .8 * u);
                 context.beginPath();
@@ -1223,17 +1223,25 @@ function blob(e) {
         context.save();
         context.globalAlpha = warning ? .25 : 1;
         for (let angle of rays(e)) {
-            context.strokeStyle = e.boss ? beamColors[e.power || 0] : e.wind ? "#c8e5ee" : e.blue ? "#5ecaff" : e.red ? "#85192f" : "#000";
-            context.shadowColor = e.boss ? e.power === 2 ? "#9461dd" : beamColors[e.power || 0] : "transparent";
-            context.shadowBlur = e.boss && !warning ? 24 : 0;
-            context.lineWidth = warning ? 2 : e.boss ? e.power === 3 ? 40 : 18 : 7;
-            context.beginPath();
-            context.moveTo(e.x, e.y + (e.boss ? -25 : 18));
-            context.lineTo(e.x + Math.cos(angle) * L, e.y + (e.boss ? -25 : 10) + Math.sin(angle) * L);
-            context.stroke();
-            context.strokeStyle = e.boss ? e.power === 2 ? "#65577c" : beamColors[e.power || 0] : e.red ? "#ff697c" : "#fff";
-            context.lineWidth = 1.5;
-            context.stroke();
+            let col = e.boss ? beamColors[e.power || 0] : e.wind ? "#c8e5ee" : e.blue ? "#5ecaff" : e.red ? "#85192f" : "#000";
+            let w = warning ? 2 : e.boss ? e.power === 3 ? 40 : 18 : 7;
+            let x2 = e.x + Math.cos(angle) * L, y2 = e.y + (e.boss ? -25 : 10) + Math.sin(angle) * L;
+            let line = (width, color) => {
+                context.strokeStyle = color;
+                context.lineWidth = width;
+                context.beginPath();
+                context.moveTo(e.x, e.y + (e.boss ? -25 : 18));
+                context.lineTo(x2, y2);
+                context.stroke();
+            };
+            if (e.boss && !warning) {
+                context.save();
+                context.globalAlpha *= .35;
+                line(w + 16, e.power === 2 ? "#9461dd" : col);
+                context.restore();
+            }
+            line(w, col);
+            line(1.5, e.boss ? e.power === 2 ? "#65577c" : col : e.red ? "#ff697c" : "#fff");
         }
         context.restore();
     }
@@ -1299,7 +1307,6 @@ function weather() {
 }
 
 function drawPlatform(a, z, edge) {
-    if (a.y < cameraY - 60 || a.y > cameraY + VIEW_HEIGHT + 40) return;
     let x = a.x, y = a.y, w = a.w, shade = context.createLinearGradient(x, y, x, y + 30);
     shade.addColorStop(0, [ "#a7dce9", "#523039", "#4d623b", "#423956" ][z]);
     shade.addColorStop(1, [ "#467b99", "#21151e", "#1c3026", "#171525" ][z]);
@@ -1371,7 +1378,9 @@ function drawWorld() {
     scenery();
     if (flipped) drawHazards();
     for (let i = 0; i < platforms.length; i++) {
-        let a = platforms[i], z = flipped ? a.y > 8500 ? 1 : a.y > 5700 ? 2 : a.y > 2900 ? 3 : 4 : 0, edge = [ "#7b8190", "#f4bfd8", "#a58b6e", "#ffc17a", "#e6faff" ][z];
+        let a = platforms[i];
+        if (a.y < cameraY - 60 || a.y > cameraY + VIEW_HEIGHT + 40) continue;
+        let z = flipped ? a.y > 8500 ? 1 : a.y > 5700 ? 2 : a.y > 2900 ? 3 : 4 : 0, edge = [ "#7b8190", "#f4bfd8", "#a58b6e", "#ffc17a", "#e6faff" ][z];
         drawPlatform(a, [ 3, 3, 2, 1, 0 ][z], edge);
         if (a.move) {
             context.strokeStyle = "#bbc4d8";
@@ -1471,22 +1480,33 @@ function hud() {
         context.save();
         let age = 8 - taunt;
         context.globalAlpha = Math.min(1, taunt);
-        blob({
-            boss: 1,
-            x: VIEW_WIDTH + 90 - 240 * Math.min(1, age / 1.2, taunt),
-            y: 230,
-            phase: 0
-        });
+        if (warned !== 2) blob({ boss: 1, x: VIEW_WIDTH + 90 - 240 * Math.min(1, age / 1.2, taunt), y: 230, phase: 0 });
         context.textAlign = "center";
         context.font = "bold 26px Georgia";
         context.lineWidth = 5;
         context.strokeStyle = "#160e24";
         context.fillStyle = "#ecd4ff";
-        for (let [text, x, y, delay] of [ [ warned === 2 ? "Are you still going on?" : "You will never escape!", 380, 150, 1 ], [ warned === 2 ? "You are a fool!" : "Ha ha ha!", 210, 290, 2.5 ], [ warned === 2 ? "Ha ha ha! Just go back!" : "HA HA HA!", 520, 410, 4 ] ]) if (age > delay) {
-            context.globalAlpha = Math.min(1, age - delay, taunt);
-            context.strokeText(text, x, y);
-            context.fillText(text, x, y);
+        if (warned === 2) {
+            context.fillStyle = context.shadowColor = "#fff2bd";
+            context.shadowBlur = 18;
         }
+        let msgs = warned === 2 ? [
+            [ "The path to paradise begins in hell.", 480, 100 ],
+            [ "You have to fall down to reach heaven.", 480, 145 ],
+            [ "From Zeus", 480, 190 ]
+        ] : [
+            [ "You will never escape!", 380, 150 ],
+            [ "Ha ha ha!", 210, 290 ],
+            [ "HA HA HA!", 520, 410 ]
+        ];
+        [ 1, 2.5, 4 ].forEach((delay, i) => {
+            if (age > delay) {
+                let [text, x, y] = msgs[i];
+                context.globalAlpha = Math.min(1, age - delay, taunt);
+                context.strokeText(text, x, y);
+                context.fillText(text, x, y);
+            }
+        });
         context.restore();
     }
     let boss = enemies.find(e => e.boss && !e.dead);
